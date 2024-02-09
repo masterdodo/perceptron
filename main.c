@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include "perceptron.h"
 
-#define PERCEPTRON_MODE 1 // 0 - TEST local weights; 1 - TRAIN & TEST
+#define PERCEPTRON_MODE 0 // 0 - TEST local weights; 1 - TRAIN & TEST
 
 #define TRAIN_SEED 123
 #define TEST_SEED 1234
