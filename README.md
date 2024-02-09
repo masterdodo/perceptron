@@ -8,6 +8,7 @@ Simple perceptron in C
 
 #### Results
 Accuracy - Untrained model (Law of Large Numbers - Proof): 500/1000 - 50.00%
+
 Accuracy - Trained model: 694/1000 - 69.40%
 
 #### Weights representation
