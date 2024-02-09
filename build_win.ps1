@@ -1,1 +1,1 @@
-gcc -Wall -Wextra -ggdb -o perceptron.exe main.c -lm
+gcc -Wall -Wextra -ggdb -o perceptron.exe main.c -lm perceptron.c

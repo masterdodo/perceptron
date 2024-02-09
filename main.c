@@ -1,190 +1,112 @@
 #include <stdio.h>
-#include <assert.h>
 #include <stdlib.h>
-#include <string.h>
-#include <errno.h>
-#include <math.h>
+#include "perceptron.h"
 
-#define WIDTH 50
-#define HEIGHT 50
-#define PPM_SCALER 10
-#define SAMPLE_SIZE 10
+#define PERCEPTRON_MODE 1 // 0 - TEST local weights; 1 - TRAIN & TEST
 
-typedef float Layer[HEIGHT][WIDTH];
+#define TRAIN_SEED 123
+#define TEST_SEED 1234
 
-static inline int clampi(int x, int low, int high)
-{
-    if (x < low)
-        x = low;
-    if (x > high)
-        x = high;
+#define SAMPLE_SIZE 500
+#define BIAS 6.0
 
-    return x;
-}
+int train_iteration(Layer input, Layer weights_layer) {
+    int adjustments = 0;
 
-void layer_fill_rect(Layer layer, int x, int y, int w, int h, float val)
-{
-    assert(w > 0);
-    assert(h > 0);
-
-    int x0 = clampi(x, 0, WIDTH - 1);
-    int y0 = clampi(y, 0, HEIGHT - 1);
-    int x1 = clampi(x0 + w - 1, 0, WIDTH - 1);
-    int y1 = clampi(y0 + h - 1, 0, HEIGHT - 1);
-
-    for (int xidx = x0; xidx <= x1; ++xidx)
-    {
-        for (int yidx = y0; yidx <= y1; ++yidx)
-        {
-            layer[yidx][xidx] = val;
+    for (int i = 0; i < SAMPLE_SIZE; ++i) {
+        layer_random_rect(input);
+        // got excited if 1 on rectangle
+        if (apply_weights(input, weights_layer) > BIAS) {
+            sub_input_to_weights(input, weights_layer);
+            adjustments++;
         }
-    }
-}
 
-void layer_fill_circle(Layer layer, int cx, int cy, int r, float val)
-{
-    assert(r > 0);
-
-    int x0 = clampi(cx - r, 0, WIDTH - 1);
-    int y0 = clampi(cy - r, 0, HEIGHT - 1);
-    int x1 = clampi(cx + r, 0, WIDTH - 1);
-    int y1 = clampi(cy + r, 0, HEIGHT - 1);
-
-    for (int y = y0; y <= y1; ++y)
-    {
-        for (int x = x0; x <= x1; ++x)
-        {
-            int dx = x - cx;
-            int dy = y - cy;
-            if (dx * dx + dy * dy <= r * r)
-            {
-                layer[y][x] = val;
-            }
-        }
-    }
-}
-
-void layer_save_as_ppm(Layer layer, const char *file_path)
-{
-    FILE *f = fopen(file_path, "wb");
-    if (f == NULL)
-    {
-        fprintf(stderr, "ERROR: could not open file %s: %s\n", file_path, strerror(errno));
-        exit(1);
-    }
-
-    fprintf(f, "P6\n%d %d 255\n", WIDTH * PPM_SCALER, HEIGHT * PPM_SCALER);
-
-    for (int y = 0; y < HEIGHT * PPM_SCALER; ++y)
-    {
-        for (int x = 0; x < WIDTH * PPM_SCALER; ++x)
-        {
-            float scalar = layer[y / PPM_SCALER][x / PPM_SCALER];
-            char pixel[3] = {
-                (char)floorf(255 * scalar),
-                0,
-                0};
-
-            fwrite(pixel, sizeof(pixel), 1, f);
+        layer_random_circle(input);
+        // got supressed if 0 on circle
+        if (apply_weights(input, weights_layer) < BIAS) {
+            add_input_to_weights(input, weights_layer);
+            adjustments++;
         }
     }
 
-    fclose(f);
+    return adjustments;
 }
 
-void layer_load_bin(Layer layer, const char *file_path)
-{
-    assert(0 && "TODO: layer_load_bin is not implemented yet!");
-}
+int test_iteration(Layer input, Layer weights_layer) {
+    int adjustments = 0;
 
-void layer_save_bin(Layer layer, const char *file_path)
-{
-    FILE *f = fopen(file_path, "wb");
-    if (f == NULL)
-    {
-        fprintf(stderr, "ERROR: could not open file %s", file_path);
-        exit(1);
-    }
+    for (int i = 0; i < SAMPLE_SIZE; ++i) {
+        layer_random_rect(input);
+        if (apply_weights(input, weights_layer) > BIAS) {
+            adjustments++;
+        }
 
-    fwrite(layer, sizeof(Layer), 1, f);
-
-    fclose(f);
-    // assert(0 && "TODO: layer_save_bin is not implemented yet!");
-}
-
-float apply_weights(Layer inputs, Layer weights)
-{
-    float output = 0.0f;
-
-    for (int y = 0; y < HEIGHT; ++y)
-    {
-        for (int x = 0; x < WIDTH; ++x)
-        {
-            output += inputs[y][x] * weights[y][x];
+        layer_random_circle(input);
+        if (apply_weights(input, weights_layer) < BIAS) {
+            adjustments++;
         }
     }
 
-    return output;
+    return adjustments;
 }
 
-void layer_random_rect(Layer layer, int i)
-{
-    char file_path[256];
-
-    layer_fill_rect(layer, 0, 0, WIDTH, HEIGHT, 0.0f);
-    int w = rand() % (WIDTH - 1) + 1;
-    int h = rand() % (HEIGHT - 1) + 1;
-    int x = rand() % (WIDTH - w);
-    int y = rand() % (HEIGHT - h);
-    layer_fill_rect(layer, x, y, w, h, 1.0f);
-
-    snprintf(file_path, sizeof(file_path), "rect-%02d.bin", i);
-    layer_save_bin(layer, file_path);
-    snprintf(file_path, sizeof(file_path), "rect-%02d.ppm", i);
-    layer_save_as_ppm(layer, file_path);
-}
-
-void layer_random_circle(Layer layer, int i)
-{
-    char file_path[256];
-
-    layer_fill_rect(layer, 0, 0, WIDTH, HEIGHT, 0.0f);
-    int r = rand() % ((WIDTH / 2) - 1) + 1;
-    if (r >= (HEIGHT / 2))
-    {
-        r = rand() % ((HEIGHT / 2) - 1) + 1;
-    }
-    int cx = rand() % ((WIDTH - r) - r) + r;
-    int cy = rand() % ((HEIGHT - r) - r) + r;
-    layer_fill_circle(layer, cx, cy, r, 1.0f);
-
-    snprintf(file_path, sizeof(file_path), "circle-%02d.bin", i);
-    layer_save_bin(layer, file_path);
-    snprintf(file_path, sizeof(file_path), "circle-%02d.ppm", i);
-    layer_save_as_ppm(layer, file_path);
-}
-
-static Layer inputs;
+static Layer input;
 static Layer weights;
 
-int main()
-{
+void load_weights(const char *file_path) {
+    layer_load_bin(weights, file_path);
+}
 
-    for (int i = 0; i < SAMPLE_SIZE; ++i)
-    {
-        printf("Generating rectangle %d\n", i);
+void perceptron_test() {
+    load_weights("weights.bin");
 
-        layer_random_rect(inputs, i);
+    srand(TEST_SEED);
+    int failed_predictions = test_iteration(input, weights);
+    int correct_predictions = (SAMPLE_SIZE * 2) - failed_predictions;
+    int all_predictions = (SAMPLE_SIZE * 2);
+    float accuracy = correct_predictions / (all_predictions * 1.0);
+    printf("Accuracy - Loaded weights (bin): %d/%d - %.2f %%\n", 
+        correct_predictions, 
+        all_predictions, 
+        accuracy * 100.0);
+}
 
-        printf("Generating circle %d\n", i);
-        layer_random_circle(inputs, i);
+void perceptron_train(bool save_weights) {
+    srand(TEST_SEED);
+    int failed_predictions = test_iteration(input, weights);
+    int correct_predictions = (SAMPLE_SIZE * 2) - failed_predictions;
+    int all_predictions = (SAMPLE_SIZE * 2);
+    float accuracy = correct_predictions / (all_predictions * 1.0);
+    printf("Accuracy - Untrained model (Law of Large Numbers - Proof): %d/%d - %.2f %%\n", 
+        correct_predictions, 
+        all_predictions, 
+        accuracy * 100.0);
+
+    do {
+        srand(TRAIN_SEED);
+    } 
+    while (train_iteration(input, weights) > 0);
+
+    if (save_weights) {
+        layer_save_as_ppm(weights, "weights.ppm");
+        layer_save_bin(weights, "weights.bin");
+    }
+
+    srand(TEST_SEED);
+    failed_predictions = test_iteration(input, weights);
+    correct_predictions = (SAMPLE_SIZE * 2) - failed_predictions;
+    accuracy = correct_predictions / (all_predictions * 1.0);
+    printf("Accuracy - Trained model: %d/%d - %.2f %%\n", correct_predictions, all_predictions, accuracy * 100.0);
+}
+
+int main() {
+    if (PERCEPTRON_MODE == 0) {
+        perceptron_test();
+    }
+    else {
+        bool save_trained_weights = true;
+        perceptron_train(save_trained_weights);
     }
 
     return 0;
-
-    // layer_fill_rect(inputs, 0, 0, WIDTH / 2, HEIGHT / 2, 1.0f);
-    // layer_fill_circle(inputs, WIDTH / 2, HEIGHT / 2, WIDTH / 2, 1.0f);
-    // layer_save_bin(inputs, "inputs.bin");
-    // float output = apply_weights(inputs, weights);
-    // printf("output = %f\n", output);
 }
